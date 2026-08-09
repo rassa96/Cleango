@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Cleaner Service",
+    "slug": "rasul",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f6f8f7"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.cleanerservice"
+    },
+    "android": {
+      "package": "com.example.cleanerservice"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "82eee710-b942-478d-8d18-f02121e950ca"
+      }
+    },
+    "owner": "rassa96s-team"
+  }
+}
