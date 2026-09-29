@@ -5,11 +5,14 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "channel": "production",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "environment": "production",
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       }

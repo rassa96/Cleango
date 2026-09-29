@@ -5,7 +5,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,11 +12,26 @@ import {
   View,
 } from "react-native";
 import { useEffect, useMemo, useState } from 'react';
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
-import * as MediaLibrary from "expo-media-library";
+import { getApps, initializeApp } from "firebase/app";
+import {
+  createUserWithEmailAndPassword,
+  EmailAuthProvider,
+  getAuth,
+  getReactNativePersistence,
+  initializeAuth,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  reauthenticateWithCredential,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  updatePassword,
+} from "firebase/auth";
+import { doc, getDoc, getFirestore, serverTimestamp, setDoc } from "firebase/firestore";
 import Svg, { Path } from "react-native-svg";
 
 const translations = {
@@ -35,6 +49,9 @@ const translations = {
     insideOven: "Inside oven",
     refrigerator: "Refrigerator",
     closetInside: "Closet",
+    wardrobe: "Wardrobe",
+    toilet: "Toilet",
+    bath: "Bath",
     loading: "Loading...",
     createAccount: "Create your account",
     welcomeBack: "Welcome back",
@@ -62,6 +79,10 @@ const translations = {
     accountExistsMsg: "An account with this email already exists. Please log in.",
     loginFailed: "Login Failed",
     loginFailedMsg: "The email or password you entered is incorrect.",
+    verifyEmailTitle: "Verify Your Email",
+    verifyEmailMsg: "We sent a verification link to your email. Verify your email, then log in.",
+    emailNotVerified: "Email Not Verified",
+    emailNotVerifiedMsg: "Please verify your email first. We sent another verification link.",
     adminDashboard: "Admin Dashboard",
     manageCleaners: "Manage Cleaners",
     workers: "Workers",
@@ -89,6 +110,37 @@ const translations = {
     sameWeekSlots: "Same-week slots",
     availableNow: "Available now",
     selectedRating: "Selected rating",
+    registeredAccounts: "Users and cleaners",
+    editAccount: "Edit information",
+    saveAccount: "Save information",
+    deleteAccount: "Delete profile",
+    resetAccountPassword: "Send password reset email",
+    cleanerAccount: "Cleaner",
+    userAccount: "User",
+    accountUpdated: "Account updated",
+    accountUpdatedMsg: "The account information was updated.",
+    accountDeleted: "Profile deleted",
+    accountDeletedMsg: "The local profile was deleted. The Firebase account still requires server-side deletion.",
+    resetEmailSent: "Password reset email sent",
+    resetEmailSentMsg: "A password reset email was sent to the account email.",
+    firebaseUnavailable: "Firebase unavailable",
+    firebaseUnavailableMsg: "Firebase Authentication is required for password reset and secure account management.",
+    changeAdminPassword: "Change admin password",
+    currentPassword: "Current password",
+    newPassword: "New password",
+    confirmPassword: "Confirm new password",
+    changePassword: "Change password",
+    passwordsDoNotMatch: "Passwords do not match",
+    passwordChanged: "Password changed",
+    passwordChangedMsg: "Your admin password has been changed successfully.",
+    passwordChangeUnavailable: "Password change unavailable",
+    passwordChangeUnavailableMsg: "Connect Firebase Authentication before changing the admin password.",
+    rateCleaner: "Rate cleaner",
+    ratingSubmitted: "Thank you for rating the cleaner",
+    commentAboutCleaner: "Comment about cleaner",
+    commentPlaceholder: "Write a private comment about the cleaner...",
+    saveComment: "Save comment",
+    commentSaved: "Private comment saved",
     timeSlot: "Time slot",
     workSlots: "Work slot times",
     chooseService: "Choose a service",
@@ -160,6 +212,7 @@ const translations = {
     payByBlik: "Pay by BLIK",
     payByBankWire: "Bank Wire",
     paymentInstructions: "Please pay to BLIK: 731 762 781 or use bank wire. After payment, upload the receipt below.",
+      bankWireAccount: "Bank account: 93109018090000000151049070",
     uploadReceipt: "Upload payment receipt",
     receiptUploaded: "Receipt uploaded",
     receiptMissing: "Upload a payment receipt to confirm your order.",
@@ -223,6 +276,9 @@ const translations = {
     insideOven: "Czyszczenie piekarnika",
     refrigerator: "Lodówka",
     closetInside: "Szafa",
+    wardrobe: "Garderoba",
+    toilet: "Toaleta",
+    bath: "Wanna",
     loading: "Ładowanie...",
     createAccount: "Utwórz swoje konto",
     welcomeBack: "Witaj z powrotem",
@@ -250,6 +306,10 @@ const translations = {
     accountExistsMsg: "Konto z tym adresem email już istnieje. Zaloguj się.",
     loginFailed: "Logowanie nie powiodło się",
     loginFailedMsg: "Email lub hasło, które wpisałeś, są nieprawidłowe.",
+    verifyEmailTitle: "Zweryfikuj email",
+    verifyEmailMsg: "Wysłaliśmy link weryfikacyjny na Twój email. Zweryfikuj konto i zaloguj się.",
+    emailNotVerified: "Email niezweryfikowany",
+    emailNotVerifiedMsg: "Najpierw zweryfikuj email. Wysłaliśmy kolejny link weryfikacyjny.",
     adminDashboard: "Panel Administratora",
     manageCleaners: "Zarządzaj sprzątaczami",
     workers: "Pracownicy",
@@ -277,6 +337,37 @@ const translations = {
     sameWeekSlots: "Sloty w tym tygodniu",
     availableNow: "Dostępni teraz",
     selectedRating: "Ocena wybranej osoby",
+    registeredAccounts: "Użytkownicy i sprzątacze",
+    editAccount: "Edytuj informacje",
+    saveAccount: "Zapisz informacje",
+    deleteAccount: "Usuń profil",
+    resetAccountPassword: "Wyślij email resetowania hasła",
+    cleanerAccount: "Sprzątacz",
+    userAccount: "Użytkownik",
+    accountUpdated: "Konto zaktualizowane",
+    accountUpdatedMsg: "Informacje o koncie zostały zaktualizowane.",
+    accountDeleted: "Profil usunięty",
+    accountDeletedMsg: "Usunięto lokalny profil. Konto Firebase wymaga usunięcia po stronie serwera.",
+    resetEmailSent: "Email resetowania hasła wysłany",
+    resetEmailSentMsg: "Email resetowania hasła został wysłany na adres konta.",
+    firebaseUnavailable: "Firebase niedostępny",
+    firebaseUnavailableMsg: "Firebase Authentication jest wymagany do resetowania hasła i bezpiecznego zarządzania kontami.",
+    changeAdminPassword: "Zmień hasło administratora",
+    currentPassword: "Obecne hasło",
+    newPassword: "Nowe hasło",
+    confirmPassword: "Potwierdź nowe hasło",
+    changePassword: "Zmień hasło",
+    passwordsDoNotMatch: "Hasła nie są takie same",
+    passwordChanged: "Hasło zmienione",
+    passwordChangedMsg: "Hasło administratora zostało pomyślnie zmienione.",
+    passwordChangeUnavailable: "Zmiana hasła niedostępna",
+    passwordChangeUnavailableMsg: "Połącz Firebase Authentication, aby zmienić hasło administratora.",
+    rateCleaner: "Oceń sprzątacza",
+    ratingSubmitted: "Dziękujemy za ocenę sprzątacza",
+    commentAboutCleaner: "Komentarz o sprzątaczu",
+    commentPlaceholder: "Napisz prywatny komentarz o sprzątaczu...",
+    saveComment: "Zapisz komentarz",
+    commentSaved: "Prywatny komentarz zapisany",
     timeSlot: "Slot czasowy",
     workSlots: "Godziny pracy",
     chooseService: "Wybierz usługę",
@@ -348,6 +439,7 @@ const translations = {
     payByBlik: "Płać przez BLIK",
     payByBankWire: "Przelew bankowy",
     paymentInstructions: "Proszę zapłać przez BLIK: 731 762 781 lub przelewem bankowym. Po płatności prześlij poniżej paragon/receipt.",
+      bankWireAccount: "Numer konta bankowego: 93109018090000000151049070",
     uploadReceipt: "Prześlij dowód płatności",
     receiptUploaded: "Dowód płatności przesłany",
     receiptMissing: "Prześlij dowód płatności, aby potwierdzić zamówienie.",
@@ -411,6 +503,9 @@ const translations = {
     insideOven: "Внутри духовки",
     refrigerator: "Холодильник",
     closetInside: "Шкаф",
+    wardrobe: "Гардероб",
+    toilet: "Туалет",
+    bath: "Ванная",
     loading: "Загрузка...",
     createAccount: "Создайте аккаунт",
     welcomeBack: "С возвращением",
@@ -438,6 +533,10 @@ const translations = {
     accountExistsMsg: "Аккаунт с таким email уже существует. Пожалуйста, войдите.",
     loginFailed: "Ошибка входа",
     loginFailedMsg: "Неверный email или пароль.",
+    verifyEmailTitle: "Подтвердите email",
+    verifyEmailMsg: "Мы отправили ссылку для подтверждения на ваш email. Подтвердите email и войдите.",
+    emailNotVerified: "Email не подтвержден",
+    emailNotVerifiedMsg: "Сначала подтвердите email. Мы отправили новую ссылку для подтверждения.",
     adminDashboard: "Панель администратора",
     manageCleaners: "Управление клинерами",
     workers: "Сотрудники",
@@ -465,6 +564,37 @@ const translations = {
     sameWeekSlots: "Слоты на этой неделе",
     availableNow: "Доступны сейчас",
     selectedRating: "Рейтинг выбранного",
+    registeredAccounts: "Пользователи и клинеры",
+    editAccount: "Изменить информацию",
+    saveAccount: "Сохранить информацию",
+    deleteAccount: "Удалить профиль",
+    resetAccountPassword: "Отправить письмо для сброса пароля",
+    cleanerAccount: "Клинер",
+    userAccount: "Пользователь",
+    accountUpdated: "Аккаунт обновлен",
+    accountUpdatedMsg: "Информация аккаунта обновлена.",
+    accountDeleted: "Профиль удален",
+    accountDeletedMsg: "Локальный профиль удален. Для удаления аккаунта Firebase нужен сервер.",
+    resetEmailSent: "Письмо для сброса пароля отправлено",
+    resetEmailSentMsg: "Письмо для сброса пароля отправлено на email аккаунта.",
+    firebaseUnavailable: "Firebase недоступен",
+    firebaseUnavailableMsg: "Firebase Authentication необходим для сброса пароля и безопасного управления аккаунтами.",
+    changeAdminPassword: "Изменить пароль администратора",
+    currentPassword: "Текущий пароль",
+    newPassword: "Новый пароль",
+    confirmPassword: "Подтвердите новый пароль",
+    changePassword: "Изменить пароль",
+    passwordsDoNotMatch: "Пароли не совпадают",
+    passwordChanged: "Пароль изменен",
+    passwordChangedMsg: "Пароль администратора успешно изменен.",
+    passwordChangeUnavailable: "Изменение пароля недоступно",
+    passwordChangeUnavailableMsg: "Подключите Firebase Authentication, чтобы изменить пароль администратора.",
+    rateCleaner: "Оценить клинера",
+    ratingSubmitted: "Спасибо за оценку клинера",
+    commentAboutCleaner: "Комментарий о клинере",
+    commentPlaceholder: "Напишите личный комментарий о клинере...",
+    saveComment: "Сохранить комментарий",
+    commentSaved: "Личный комментарий сохранен",
     timeSlot: "Временной слот",
     workSlots: "Рабочие слоты",
     chooseService: "Выберите услугу",
@@ -580,7 +710,7 @@ const services = [
     id: "home",
     titleKey: "homeClean",
     subtitleKey: "homeCleanSub",
-    icon: "home-sparkle",
+    icon: "home",
     basePrice: 45,
   },
   {
@@ -606,10 +736,18 @@ const services = [
   },
 ];
 const timeSlots = ["09:00", "11:30", "14:00", "16:30"];
-const extrasKeys = ["windows", "laundry", "insideOven", "refrigerator", "closetInside"];
+const extrasKeys = [
+  "windows",
+  "laundry",
+  "insideOven",
+  "refrigerator",
+  "closetInside",
+  "wardrobe",
+  "toilet",
+  "bath",
+];
 const adminAccount = {
-  email: "admin@cleaner.app",
-  password: "admin123",
+  email: (process.env.EXPO_PUBLIC_ADMIN_EMAIL || "").trim().toLowerCase(),
 };
 const idCardStatuses = {
   notSubmitted: "not_submitted",
@@ -630,7 +768,73 @@ const storageKeys = {
   supportMessages: "cleaner-app-support-messages",
 };
 
+const sharedCloudStorageKeys = new Set([
+  storageKeys.registeredUsers,
+  storageKeys.bookings,
+  storageKeys.supportMessages,
+  storageKeys.serviceCities,
+]);
+
+const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+};
+
+const hasFirebaseConfig = Object.values(firebaseConfig).every(
+  (value) => typeof value === "string" && value.trim().length > 0
+);
+
+let firebaseApp = null;
+let firestoreDb = null;
+let firebaseAuth = null;
+
+if (hasFirebaseConfig) {
+  try {
+    firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(firebaseApp);
+    if (Platform.OS === "web") {
+      firebaseAuth = getAuth(firebaseApp);
+    } else {
+      try {
+        firebaseAuth = initializeAuth(firebaseApp, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+      } catch {
+        firebaseAuth = getAuth(firebaseApp);
+      }
+    }
+  } catch (error) {
+    // If Firebase config is invalid on a build, keep app usable with local storage mode.
+    firebaseApp = null;
+    firestoreDb = null;
+    firebaseAuth = null;
+  }
+}
+const sharedAppStateDoc = firestoreDb
+  ? doc(firestoreDb, "cleanerServiceApp", "sharedState")
+  : null;
+
+let isCloudStorageAvailable = Boolean(sharedAppStateDoc);
+
+const isCloudBackedKey = (key) =>
+  sharedCloudStorageKeys.has(key) && Boolean(sharedAppStateDoc) && isCloudStorageAvailable;
+
 const readStoredValue = async (key, fallback) => {
+  if (isCloudBackedKey(key)) {
+    try {
+      const snapshot = await getDoc(sharedAppStateDoc);
+      if (!snapshot.exists()) return fallback;
+      const data = snapshot.data();
+      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : fallback;
+    } catch {
+      isCloudStorageAvailable = false;
+    }
+  }
+
   try {
     const storedValue = await AsyncStorage.getItem(key);
     return storedValue ? JSON.parse(storedValue) : fallback;
@@ -640,6 +844,21 @@ const readStoredValue = async (key, fallback) => {
 };
 
 const writeStoredValue = async (key, value) => {
+  if (isCloudBackedKey(key)) {
+    try {
+      await setDoc(
+        sharedAppStateDoc,
+        {
+          [key]: value,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch {
+      isCloudStorageAvailable = false;
+    }
+  }
+
   try {
     await AsyncStorage.setItem(key, JSON.stringify(value));
   } catch (e) {
@@ -682,7 +901,7 @@ const initialCleaners = [
   },
 ];
 
-export default function App() {
+function AppContent() {
   const [storageReady, setStorageReady] = useState(false);
   const [language, setLanguage] = useState("en");
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
@@ -692,6 +911,7 @@ export default function App() {
   const [cleaners, setCleaners] = useState(initialCleaners);
   const [bookings, setBookings] = useState([]);
   const [supportMessages, setSupportMessages] = useState([]);
+  const [supportInboxExpanded, setSupportInboxExpanded] = useState(null);
   const [serviceCities, setServiceCities] = useState(defaultServiceCities);
   const [cityDraft, setCityDraft] = useState("");
   const [editingCity, setEditingCity] = useState(null);
@@ -728,10 +948,19 @@ export default function App() {
   const [activePaymentBookingId, setActivePaymentBookingId] = useState(null);
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState("");
   const [pendingPaymentReceiptImage, setPendingPaymentReceiptImage] = useState("");
+  const [cleanerCommentDrafts, setCleanerCommentDrafts] = useState({});
+  const [cleanerRatingDrafts, setCleanerRatingDrafts] = useState({});
   const [supportDraft, setSupportDraft] = useState("");
   const [adminSupportDraft, setAdminSupportDraft] = useState("");
   const [adminSupportTarget, setAdminSupportTarget] = useState("users");
   const [adminSupportRecipientEmail, setAdminSupportRecipientEmail] = useState("");
+  const [adminPasswordForm, setAdminPasswordForm] = useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [editingAccountEmail, setEditingAccountEmail] = useState(null);
+  const [accountEditForm, setAccountEditForm] = useState({ name: "", email: "", phone: "" });
   const [profileForm, setProfileForm] = useState({
     name: "",
     email: "",
@@ -1037,7 +1266,7 @@ export default function App() {
     setShowPassword(false);
   };
 
-  const submitAuth = () => {
+  const submitAuth = async () => {
     const name = authForm.name.trim();
     const email = authForm.email.trim().toLowerCase();
     const password = authForm.password;
@@ -1069,13 +1298,36 @@ export default function App() {
       const newUser = {
         name,
         email,
-        password,
+        password: firebaseAuth ? "firebase-auth" : password,
         wantsToBeCleaner: Boolean(authForm.wantsToBeCleaner),
         cleanerAvailability: authForm.wantsToBeCleaner ? [] : undefined,
         phone: "",
         idCardImage: "",
         idCardStatus: idCardStatuses.notSubmitted,
       };
+
+      if (firebaseAuth) {
+        try {
+          const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+          await sendEmailVerification(credential.user);
+          await firebaseSignOut(firebaseAuth);
+          setRegisteredUsers((current) => [...current, newUser]);
+          setAuthMode("login");
+          setAuthForm({ name: "", email: "", password: "", wantsToBeCleaner: false });
+          Alert.alert(t("verifyEmailTitle"), t("verifyEmailMsg"));
+          return;
+        } catch (error) {
+          if (error?.code === "auth/email-already-in-use") {
+            Alert.alert(t("accountExists"), t("accountExistsMsg"));
+            setAuthMode("login");
+            return;
+          }
+
+          Alert.alert(t("loginFailed"), t("loginFailedMsg"));
+          return;
+        }
+      }
+
       setRegisteredUsers((current) => [...current, newUser]);
       setSelectedService(null);
       setSelectedExtras([]);
@@ -1093,39 +1345,84 @@ export default function App() {
       return;
     }
 
-    if (email === adminAccount.email && password === adminAccount.password) {
-      setCurrentUser({ name: "Admin", email, role: "admin" });
-      setAuthForm({ name: "", email: "", password: "", wantsToBeCleaner: false });
-      return;
+    if (firebaseAuth) {
+      try {
+        const credential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+
+        if (!credential.user.emailVerified) {
+          await sendEmailVerification(credential.user);
+          await firebaseSignOut(firebaseAuth);
+          Alert.alert(t("emailNotVerified"), t("emailNotVerifiedMsg"));
+          return;
+        }
+
+        if (email === adminAccount.email) {
+          setCurrentUser({ name: "Admin", email, role: "admin" });
+          setAuthForm({ name: "", email: "", password: "", wantsToBeCleaner: false });
+          return;
+        }
+      } catch {
+        if (email === adminAccount.email) {
+          Alert.alert(t("loginFailed"), t("loginFailedMsg"));
+          return;
+        }
+
+        Alert.alert(t("loginFailed"), t("loginFailedMsg"));
+        return;
+      }
     }
 
     const matchedUser = registeredUsers.find(
-      (user) => user.email === email && user.password === password
+      (user) => user.email === email && (firebaseAuth || user.password === password)
     );
 
-    if (!matchedUser) {
+    if (!matchedUser && !firebaseAuth) {
       Alert.alert(t("loginFailed"), t("loginFailedMsg"));
       return;
+    }
+
+    const ensuredUser =
+      matchedUser || {
+        name: email.split("@")[0],
+        email,
+        password: "firebase-auth",
+        wantsToBeCleaner: false,
+        cleanerAvailability: [],
+        phone: "",
+        idCardImage: "",
+        idCardStatus: idCardStatuses.notSubmitted,
+      };
+
+    if (!matchedUser && firebaseAuth) {
+      setRegisteredUsers((current) => [...current, ensuredUser]);
     }
 
     setSelectedService(null);
     setSelectedExtras([]);
     setCurrentUser({
-      name: matchedUser.name,
-      email: matchedUser.email,
-      wantsToBeCleaner: Boolean(matchedUser.wantsToBeCleaner),
-      cleanerAvailability: Array.isArray(matchedUser.cleanerAvailability)
-        ? matchedUser.cleanerAvailability
+      name: ensuredUser.name,
+      email: ensuredUser.email,
+      wantsToBeCleaner: Boolean(ensuredUser.wantsToBeCleaner),
+      cleanerAvailability: Array.isArray(ensuredUser.cleanerAvailability)
+        ? ensuredUser.cleanerAvailability
         : [],
-      phone: matchedUser.phone || "",
-      idCardImage: matchedUser.idCardImage || "",
-      idCardStatus: matchedUser.idCardStatus || idCardStatuses.notSubmitted,
+      phone: ensuredUser.phone || "",
+      idCardImage: ensuredUser.idCardImage || "",
+      idCardStatus: ensuredUser.idCardStatus || idCardStatuses.notSubmitted,
       role: "user",
     });
     setAuthForm({ name: "", email: "", password: "", wantsToBeCleaner: false });
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (firebaseAuth) {
+      try {
+        await firebaseSignOut(firebaseAuth);
+      } catch {
+        // signout error
+      }
+    }
+
     setCurrentUser(null);
     setActiveTab("home");
     setAuthMode("login");
@@ -1138,6 +1435,67 @@ export default function App() {
     setSelectedService(null);
     setSelectedExtras([]);
     setShowPassword(false);
+    setAdminPasswordForm({ current: "", next: "", confirm: "" });
+  };
+
+  const updateAdminPasswordField = (field, value) => {
+    setAdminPasswordForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const changeAdminPassword = async () => {
+    const { current, next, confirm } = adminPasswordForm;
+
+    if (
+      !firebaseAuth ||
+      currentUser?.role !== "admin" ||
+      !currentUser?.email
+    ) {
+      Alert.alert(t("passwordChangeUnavailable"), t("passwordChangeUnavailableMsg"));
+      return;
+    }
+
+    if (next.length < 6) {
+      Alert.alert(t("passwordTooShort"), t("passwordTooShortMsg"));
+      return;
+    }
+
+    if (next !== confirm) {
+      Alert.alert(t("passwordsDoNotMatch"));
+      return;
+    }
+
+    try {
+      let authenticatedUser = firebaseAuth.currentUser;
+
+      if (
+        !authenticatedUser ||
+        authenticatedUser.email?.toLowerCase() !== currentUser.email.toLowerCase()
+      ) {
+        const signInResult = await signInWithEmailAndPassword(
+          firebaseAuth,
+          currentUser.email,
+          current
+        );
+        authenticatedUser = signInResult.user;
+      } else {
+        const credential = EmailAuthProvider.credential(authenticatedUser.email, current);
+        await reauthenticateWithCredential(authenticatedUser, credential);
+      }
+
+      await updatePassword(authenticatedUser, next);
+      setAdminPasswordForm({ current: "", next: "", confirm: "" });
+      Alert.alert(t("passwordChanged"), t("passwordChangedMsg"));
+    } catch (error) {
+      if (error?.code === "auth/wrong-password" || error?.code === "auth/invalid-credential") {
+        Alert.alert(t("loginFailed"), t("loginFailedMsg"));
+        return;
+      }
+
+      Alert.alert(t("passwordChangeUnavailable"), t("passwordChangeUnavailableMsg"));
+    }
   };
 
   const updateProfileField = (field, value) => {
@@ -1349,47 +1707,6 @@ export default function App() {
     Alert.alert(t("messageSent"), t("messageSentMsg"));
   };
 
-  const downloadReceiptImage = async (receiptUri, bookingId) => {
-    if (!receiptUri) {
-      return;
-    }
-
-    try {
-      if (Platform.OS === "web") {
-        Alert.alert(t("receiptSaveFailed"), t("receiptSaveFailedMsg"));
-        return;
-      }
-
-      const permission = await MediaLibrary.requestPermissionsAsync();
-
-      if (!permission.granted) {
-        Alert.alert(t("mediaPermissionDenied"), t("mediaPermissionDeniedMsg"));
-        return;
-      }
-
-      const maybeExtension = receiptUri.split(".").pop();
-      const extension = maybeExtension ? maybeExtension.split("?")[0].slice(0, 4) : "jpg";
-      const fileName = `receipt-${bookingId || Date.now()}.${extension || "jpg"}`;
-      const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
-
-      await FileSystem.downloadAsync(receiptUri, destinationUri);
-
-      const asset = await MediaLibrary.createAssetAsync(destinationUri);
-      const albumName = "CleanerReceipts";
-      const existingAlbum = await MediaLibrary.getAlbumAsync(albumName);
-
-      if (existingAlbum) {
-        await MediaLibrary.addAssetsToAlbumAsync([asset], existingAlbum, false);
-      } else {
-        await MediaLibrary.createAlbumAsync(albumName, asset, false);
-      }
-
-      Alert.alert(t("receiptSaved"), t("receiptSavedMsg"));
-    } catch {
-      Alert.alert(t("receiptSaveFailed"), t("receiptSaveFailedMsg"));
-    }
-  };
-
   const openPaymentForm = (bookingId) => {
     const booking = bookings.find((item) => item.id === bookingId);
 
@@ -1565,6 +1882,54 @@ export default function App() {
     );
   };
 
+  const selectCleanerRating = (bookingId, rating) => {
+    setCleanerRatingDrafts((current) => ({
+      ...current,
+      [bookingId]: rating,
+    }));
+  };
+
+  const rateCleaner = (bookingId) => {
+    const rating = cleanerRatingDrafts[bookingId];
+
+    if (!rating) {
+      return;
+    }
+
+    setBookings((current) =>
+      current.map((booking) =>
+        booking.id === bookingId && booking.status === t("completed")
+          ? { ...booking, cleanerRating: rating }
+          : booking
+      )
+    );
+    setCleanerRatingDrafts((current) => ({
+      ...current,
+      [bookingId]: undefined,
+    }));
+  };
+
+  const saveCleanerComment = (bookingId) => {
+    const comment = (cleanerCommentDrafts[bookingId] || "").trim();
+
+    if (!comment) {
+      return;
+    }
+
+    setBookings((current) =>
+      current.map((booking) =>
+        booking.id === bookingId && booking.status === t("completed")
+          ? { ...booking, cleanerComment: comment }
+          : booking
+      )
+    );
+    setCleanerCommentDrafts((current) => ({
+      ...current,
+      [bookingId]: "",
+    }));
+    Alert.alert(t("commentSaved"));
+  };
+
   const normalizeCityName = (value) => value.trim().replace(/\s+/g, " ");
 
   const startEditingCity = (city) => {
@@ -1660,6 +2025,65 @@ export default function App() {
     );
   };
 
+  const startEditingAccount = (user) => {
+    setEditingAccountEmail(user.email);
+    setAccountEditForm({
+      name: user.name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+    });
+  };
+
+  const saveAccountEdit = (originalEmail) => {
+    const name = accountEditForm.name.trim();
+    const email = accountEditForm.email.trim().toLowerCase();
+    const phone = accountEditForm.phone.trim();
+
+    if (!name || !email) return;
+
+    if (registeredUsers.some((user) => user.email !== originalEmail && user.email === email)) {
+      Alert.alert(t("accountExists"), t("accountExistsMsg"));
+      return;
+    }
+
+    setRegisteredUsers((current) =>
+      current.map((user) =>
+        user.email === originalEmail ? { ...user, name, email, phone } : user
+      )
+    );
+    setEditingAccountEmail(null);
+    Alert.alert(t("accountUpdated"), t("accountUpdatedMsg"));
+  };
+
+  const sendAccountPasswordReset = async (email) => {
+    if (!firebaseAuth) {
+      Alert.alert(t("firebaseUnavailable"), t("firebaseUnavailableMsg"));
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email);
+      Alert.alert(t("resetEmailSent"), t("resetEmailSentMsg"));
+    } catch {
+      Alert.alert(t("firebaseUnavailable"), t("firebaseUnavailableMsg"));
+    }
+  };
+
+  const deleteAccountProfile = (email) => {
+    Alert.alert(t("deleteAccount"), t("accountDeletedMsg"), [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("deleteAccount"),
+        style: "destructive",
+        onPress: () => {
+          setRegisteredUsers((current) => current.filter((user) => user.email !== email));
+          setEditingAccountEmail(null);
+          Alert.alert(t("accountDeleted"), t("accountDeletedMsg"));
+        },
+      },
+    ]);
+  };
+
   const deleteUserIdCard = (email) => {
     Alert.alert(t("deleteIdCardTitle"), t("deleteIdCardMsg"), [
       {
@@ -1713,7 +2137,7 @@ export default function App() {
                 <Text style={styles.logoText}>C</Text>
               </View>
               <View>
-                <Text style={styles.carouselBrand}>CleanGo</Text>
+                <Text style={styles.carouselBrand}>Clevora</Text>
                 <Text style={styles.carouselTagline}>CLEANING SERVICES</Text>
               </View>
             </View>
@@ -2039,6 +2463,37 @@ export default function App() {
             </View>
           </View>
 
+          <View style={styles.adminCard}>
+            <Text style={styles.adminCardTitle}>{t("changeAdminPassword")}</Text>
+            <TextInput
+              value={adminPasswordForm.current}
+              onChangeText={(value) => updateAdminPasswordField("current", value)}
+              style={styles.adminPasswordInput}
+              placeholder={t("currentPassword")}
+              placeholderTextColor="#7b8c88"
+              secureTextEntry
+            />
+            <TextInput
+              value={adminPasswordForm.next}
+              onChangeText={(value) => updateAdminPasswordField("next", value)}
+              style={styles.adminPasswordInput}
+              placeholder={t("newPassword")}
+              placeholderTextColor="#7b8c88"
+              secureTextEntry
+            />
+            <TextInput
+              value={adminPasswordForm.confirm}
+              onChangeText={(value) => updateAdminPasswordField("confirm", value)}
+              style={styles.adminPasswordInput}
+              placeholder={t("confirmPassword")}
+              placeholderTextColor="#7b8c88"
+              secureTextEntry
+            />
+            <Pressable onPress={changeAdminPassword} style={styles.smallActionButton}>
+              <Text style={styles.smallActionText}>{t("changePassword")}</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.dashboardBand}>
             <View>
               <Text style={styles.dashboardValue}>{bookings.length}</Text>
@@ -2097,18 +2552,31 @@ export default function App() {
                     {booking.slot} - {booking.address}
                   </Text>
                   <Text style={styles.adminCardTotal}>{formatPrice(booking.total)}</Text>
+                  {booking.cleanerRating ? (
+                    <View style={styles.adminRatingBlock}>
+                      <Text style={styles.adminCommentLabel}>Customer rating</Text>
+                      <View style={styles.ratingStars}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= booking.cleanerRating ? "star" : "star-outline"}
+                            size={20}
+                            color="#F5B942"
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+                  {booking.cleanerComment ? (
+                    <View style={styles.adminCommentBlock}>
+                      <Text style={styles.adminCommentLabel}>{t("commentAboutCleaner")}</Text>
+                      <Text style={styles.adminCardText}>{booking.cleanerComment}</Text>
+                    </View>
+                  ) : null}
                   {booking.paymentReceiptImage ? (
                     <View style={styles.adminReceiptBlock}>
                       <Text style={styles.adminReceiptLabel}>Receipt</Text>
                       <Image source={{ uri: booking.paymentReceiptImage }} style={styles.adminReceiptPreview} />
-                      <View style={styles.adminReceiptActions}>
-                        <Pressable
-                          onPress={() => downloadReceiptImage(booking.paymentReceiptImage, booking.id)}
-                          style={styles.smallActionButton}
-                        >
-                          <Text style={styles.smallActionText}>{t("downloadReceipt")}</Text>
-                        </Pressable>
-                      </View>
                     </View>
                   ) : null}
                   <View style={styles.adminActionRow}>
@@ -2127,14 +2595,37 @@ export default function App() {
             )}
           </View>
 
-          <SectionTitle title={t("supportInbox")} />
+          <Pressable
+            onPress={() =>
+              setSupportInboxExpanded((current) => {
+                const isExpanded = current === null ? supportMessages.length <= 5 : current;
+                return !isExpanded;
+              })
+            }
+            style={styles.adminSectionHeader}
+          >
+            <View>
+              <Text style={styles.sectionTitle}>{t("supportInbox")}</Text>
+              <Text style={styles.adminCardText}>{supportMessages.length} messages</Text>
+            </View>
+            <Ionicons
+              name={
+                (supportInboxExpanded === null ? supportMessages.length <= 5 : supportInboxExpanded)
+                  ? "chevron-up-outline"
+                  : "chevron-down-outline"
+              }
+              size={22}
+              color="#8ce0c8"
+            />
+          </Pressable>
           <View style={styles.adminList}>
-            {supportMessages.length === 0 ? (
+            {(supportInboxExpanded === null ? supportMessages.length <= 5 : supportInboxExpanded) &&
+            supportMessages.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="chatbubble-ellipses-outline" size={26} color="#24605a" />
                 <Text style={styles.emptyStateText}>{t("noSupportMessages")}</Text>
               </View>
-            ) : (
+            ) : (supportInboxExpanded === null ? supportMessages.length <= 5 : supportInboxExpanded) ? (
               supportMessages.map((item) => {
                 const sourceLabel =
                   item.fromType === "admin"
@@ -2173,7 +2664,7 @@ export default function App() {
                   </View>
                 );
               })
-            )}
+            ) : null}
           </View>
 
           <View style={styles.adminCard}>
@@ -2372,6 +2863,106 @@ export default function App() {
             </View>
           </View>
 
+          <SectionTitle title={t("registeredAccounts")} />
+          <View style={styles.adminList}>
+            {registeredUsers.filter((user) => user.email !== adminAccount.email).length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="people-outline" size={26} color="#24605a" />
+                <Text style={styles.emptyStateText}>{t("supportNoRecipients")}</Text>
+              </View>
+            ) : (
+              registeredUsers
+                .filter((user) => user.email !== adminAccount.email)
+                .map((user) => {
+                  const isEditing = editingAccountEmail === user.email;
+
+                  return (
+                    <View key={user.email} style={styles.adminCard}>
+                      <View style={styles.adminCardHeader}>
+                        <View>
+                          <Text style={styles.adminCardTitle}>{user.name}</Text>
+                          <Text style={styles.adminCardText}>{user.email}</Text>
+                        </View>
+                        <Text style={styles.supportSourceBadgeText}>
+                          {user.wantsToBeCleaner ? t("cleanerAccount") : t("userAccount")}
+                        </Text>
+                      </View>
+
+                      {isEditing ? (
+                        <View style={styles.accountEditForm}>
+                          <TextInput
+                            value={accountEditForm.name}
+                            onChangeText={(value) =>
+                              setAccountEditForm((current) => ({ ...current, name: value }))
+                            }
+                            style={styles.adminInput}
+                            placeholder={t("fullName")}
+                            placeholderTextColor="#7a8a98"
+                          />
+                          <TextInput
+                            value={accountEditForm.email}
+                            onChangeText={(value) =>
+                              setAccountEditForm((current) => ({ ...current, email: value }))
+                            }
+                            style={styles.adminInput}
+                            placeholder={t("email")}
+                            placeholderTextColor="#7a8a98"
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                          />
+                          <TextInput
+                            value={accountEditForm.phone}
+                            onChangeText={(value) =>
+                              setAccountEditForm((current) => ({ ...current, phone: value }))
+                            }
+                            style={styles.adminInput}
+                            placeholder={t("phoneNumber")}
+                            placeholderTextColor="#7a8a98"
+                            keyboardType="phone-pad"
+                          />
+                          <View style={styles.adminActionRow}>
+                            <Pressable
+                              onPress={() => saveAccountEdit(user.email)}
+                              style={styles.smallActionButton}
+                            >
+                              <Text style={styles.smallActionText}>{t("saveAccount")}</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={() => setEditingAccountEmail(null)}
+                              style={styles.adminGhostButton}
+                            >
+                              <Text style={styles.adminGhostButtonText}>{t("cancel")}</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
+
+                      <View style={styles.adminActionRow}>
+                        <Pressable
+                          onPress={() => startEditingAccount(user)}
+                          style={styles.smallActionButton}
+                        >
+                          <Text style={styles.smallActionText}>{t("editAccount")}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => sendAccountPasswordReset(user.email)}
+                          style={styles.smallActionButton}
+                        >
+                          <Text style={styles.smallActionText}>{t("resetAccountPassword")}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => deleteAccountProfile(user.email)}
+                          style={[styles.smallActionButton, styles.adminDeleteButton]}
+                        >
+                          <Text style={styles.smallActionText}>{t("deleteAccount")}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })
+            )}
+          </View>
+
           <SectionTitle title={t("serviceArea")} />
           <View style={styles.adminList}>
             <View style={styles.adminCard}>
@@ -2519,7 +3110,7 @@ export default function App() {
         >
           <View style={styles.homeTopBar}>
             <View style={styles.homeLogoContainer}>
-              <Image source={require("./assets/images/home-logo.png")} style={styles.homeLogoImage} resizeMode="contain" />
+              <Image source={require("./clevora.png")} style={styles.homeLogoImage} resizeMode="contain" />
             </View>
             <View style={styles.homeLanguageSwitcher}>
               {renderLanguageBar("light")}
@@ -2903,10 +3494,12 @@ export default function App() {
                     </Text>
                   </View>
                   {profileForm.idCardImage ? (
-                    <View style={styles.idCardPreviewWrap}>
-                      <Image source={{ uri: profileForm.idCardImage }} style={styles.idCardPreview} />
-                      <Text style={styles.idCardUploadInfo}>{t("idCardImageUploaded")}</Text>
-                    </View>
+                    (currentUser.idCardStatus || idCardStatuses.notSubmitted) === idCardStatuses.approved ? null : (
+                      <View style={styles.idCardPreviewWrap}>
+                        <Image source={{ uri: profileForm.idCardImage }} style={styles.idCardPreview} />
+                        <Text style={styles.idCardUploadInfo}>{t("idCardImageUploaded")}</Text>
+                      </View>
+                    )
                   ) : (
                     <Text style={styles.idCardUploadInfo}>{t("idCardImageMissing")}</Text>
                   )}
@@ -2946,11 +3539,12 @@ export default function App() {
                           : currentUser.wantsToBeCleaner
                             ? t("supportFromCleaner")
                             : t("supportFromUser");
+                      const senderName = item.fromName || sourceLabel;
 
                       return (
                         <View key={item.id} style={styles.supportUserMessageCard}>
                           <View style={styles.supportUserMessageHeader}>
-                            <Text style={styles.supportUserSource}>{sourceLabel}</Text>
+                            <Text style={styles.supportUserSource}>{senderName}</Text>
                             <Text style={styles.supportUserTime}>
                               {new Date(item.createdAt).toLocaleString()}
                             </Text>
@@ -3007,6 +3601,82 @@ export default function App() {
                       </View>
                       <Text style={styles.orderHistoryText}>{booking.address}</Text>
                       <Text style={styles.orderHistoryTotal}>{formatPrice(booking.total)}</Text>
+                      {booking.status === t("completed") ? (
+                        <>
+                          {booking.cleanerRating ? (
+                            <View style={styles.ratingResult}>
+                              <View style={styles.ratingStars}>
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <Ionicons
+                                    key={star}
+                                    name={star <= booking.cleanerRating ? "star" : "star-outline"}
+                                    size={20}
+                                    color="#F5B942"
+                                  />
+                                ))}
+                              </View>
+                              <Text style={styles.ratingResultText}>{t("ratingSubmitted")}</Text>
+                            </View>
+                          ) : (
+                            <View style={styles.rateCleanerButton}>
+                              <View style={styles.ratingStars}>
+                                {[1, 2, 3, 4, 5].map((star) => {
+                                  const selectedRating = cleanerRatingDrafts[booking.id] || 0;
+
+                                  return (
+                                    <Pressable
+                                      key={star}
+                                      onPress={() => selectCleanerRating(booking.id, star)}
+                                      style={styles.ratingStarButton}
+                                    >
+                                      <Ionicons
+                                        name={star <= selectedRating ? "star" : "star-outline"}
+                                        size={22}
+                                        color="#F5B942"
+                                      />
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                              <Pressable
+                                onPress={() => rateCleaner(booking.id)}
+                                disabled={!cleanerRatingDrafts[booking.id]}
+                                style={[
+                                  styles.submitRatingButton,
+                                  !cleanerRatingDrafts[booking.id] && styles.submitRatingButtonDisabled,
+                                ]}
+                              >
+                                <Text style={styles.rateCleanerText}>{t("rateCleaner")}</Text>
+                              </Pressable>
+                            </View>
+                          )}
+                          {!booking.cleanerComment ? (
+                            <View style={styles.cleanerCommentForm}>
+                              <Text style={styles.rateCleanerText}>{t("commentAboutCleaner")}</Text>
+                              <TextInput
+                                value={cleanerCommentDrafts[booking.id] || ""}
+                                onChangeText={(value) =>
+                                  setCleanerCommentDrafts((current) => ({
+                                    ...current,
+                                    [booking.id]: value,
+                                  }))
+                                }
+                                style={styles.cleanerCommentInput}
+                                placeholder={t("commentPlaceholder")}
+                                placeholderTextColor="#7b8c88"
+                                multiline
+                                textAlignVertical="top"
+                              />
+                              <Pressable
+                                onPress={() => saveCleanerComment(booking.id)}
+                                style={styles.saveCommentButton}
+                              >
+                                <Text style={styles.saveCommentText}>{t("saveComment")}</Text>
+                              </Pressable>
+                            </View>
+                          ) : null}
+                        </>
+                      ) : null}
                       {activePaymentBookingId === booking.id && booking.status === t("needToPay") && (
                         <View style={styles.paymentCard}>
                           <Text style={styles.label}>{t("paymentMethod")}</Text>
@@ -3045,6 +3715,9 @@ export default function App() {
                               </Text>
                             </Pressable>
                           </View>
+                          {pendingPaymentMethod === "bank" ? (
+                            <Text style={styles.bankWireAccount}>{t("bankWireAccount")}</Text>
+                          ) : null}
 
                           <Pressable onPress={pickPendingPaymentReceiptImage} style={styles.idCardUploadButton}>
                             <Ionicons name="receipt-outline" size={18} color="#0f1419" />
@@ -3107,6 +3780,14 @@ export default function App() {
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
   );
 }
 
@@ -4045,10 +4726,37 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 18,
   },
+  adminPasswordInput: {
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#3d5966",
+    backgroundColor: "#101923",
+    color: "#ffffff",
+    fontSize: 14,
+  },
   adminCardTotal: {
     color: "#7FD356",
     fontSize: 16,
     fontWeight: "900",
+  },
+  adminCommentBlock: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#2a3a48",
+    gap: 4,
+  },
+  adminCommentLabel: {
+    color: "#F5B942",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  accountEditForm: {
+    marginTop: 8,
+    gap: 8,
   },
   adminReceiptBlock: {
     marginTop: 12,
@@ -4341,6 +5049,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 10,
   },
+  bankWireAccount: {
+    color: "#103f3a",
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 20,
+    marginBottom: 10,
+  },
   supportInput: {
     minHeight: 100,
     backgroundColor: "#f8f8f8",
@@ -4588,6 +5303,79 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     marginTop: 10,
+  },
+  rateCleanerButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#F5B942",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  ratingStars: {
+    flexDirection: "row",
+    gap: 3,
+  },
+  ratingStarButton: {
+    padding: 2,
+  },
+  submitRatingButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: "#273b42",
+  },
+  submitRatingButtonDisabled: {
+    opacity: 0.5,
+  },
+  rateCleanerText: {
+    color: "#F5B942",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  ratingResult: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  ratingResultText: {
+    flex: 1,
+    color: "#b0b8c0",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  cleanerCommentForm: {
+    marginTop: 12,
+    gap: 8,
+  },
+  cleanerCommentInput: {
+    minHeight: 76,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#3d5966",
+    backgroundColor: "#101923",
+    color: "#ffffff",
+    fontSize: 13,
+  },
+  saveCommentButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#7FD356",
+  },
+  saveCommentText: {
+    color: "#0f1419",
+    fontSize: 12,
+    fontWeight: "900",
   },
   bottomNav: {
     position: "absolute",

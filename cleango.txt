@@ -1,0 +1,10 @@
+
+Google play deployment code
+
+npx --yes eas-cli build --platform android --profile production
+
+Apk deployment code
+
+npx --yes eas-cli build --platform android --profile preview
+
+Clevora app

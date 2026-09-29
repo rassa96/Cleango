@@ -1,13 +1,11 @@
 {
   "expo": {
-    "name": "Cleaner Service",
+    "name": "Clevora",
     "slug": "rasul",
     "version": "1.0.0",
+    "icon": "./clevora.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "splash": {
-      "backgroundColor": "#f6f8f7"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -16,7 +14,11 @@
       "bundleIdentifier": "com.example.cleanerservice"
     },
     "android": {
-      "package": "com.example.cleanerservice"
+      "package": "com.example.cleanerservice",
+      "adaptiveIcon": {
+        "foregroundImage": "./clevora.png",
+        "backgroundColor": "#ffffff"
+      }
     },
     "web": {
       "bundler": "metro"
@@ -26,6 +28,16 @@
         "projectId": "82eee710-b942-478d-8d18-f02121e950ca"
       }
     },
-    "owner": "rassa96s-team"
+    "owner": "rassa96s-team",
+    "plugins": [
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/82eee710-b942-478d-8d18-f02121e950ca"
+    }
   }
 }
