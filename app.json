@@ -25,7 +25,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "82eee710-b942-478d-8d18-f02121e950ca"
+        "projectId": "0c4f99b5-8af5-4f51-9c5b-78c44b4d1009"
       }
     },
     "owner": "rassa96s-team",
@@ -37,7 +37,7 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/82eee710-b942-478d-8d18-f02121e950ca"
+      "url": "https://u.expo.dev/0c4f99b5-8af5-4f51-9c5b-78c44b4d1009"
     }
   }
 }
